@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getAnthropicClient } from '@/lib/ai/client';
+import { getAIClient } from '@/lib/ai/client';
 import { checkAndRecordUsage } from '@/lib/ai/checkUsage';
 
 const RequestSchema = z.object({
@@ -31,19 +31,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const client = getAnthropicClient();
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 256,
-      messages: [
-        {
-          role: 'user',
-          content: `以下のキーワードに関連するキーワードを5つ、JSON配列形式で返してください。各キーワードは簡潔（10文字以内）にしてください。JSON配列のみを返してください（説明不要）。\n\nキーワード: ${parsed.data.label}`,
-        },
-      ],
+    const ai = getAIClient();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: `以下のキーワードに関連するキーワードを5つ、JSON配列形式で返してください。各キーワードは簡潔（10文字以内）にしてください。JSON配列のみを返してください（説明不要）。\n\nキーワード: ${parsed.data.label}`,
     });
 
-    const text = message.content[0]?.type === 'text' ? message.content[0].text : '[]';
+    const text = response.text ?? '[]';
     const match = text.match(/\[[\s\S]*\]/);
     let keywords: string[] = [];
     try {
