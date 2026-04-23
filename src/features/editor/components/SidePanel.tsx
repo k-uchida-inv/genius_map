@@ -9,6 +9,7 @@ type SelectedNode = { id: string; label: string; memo: string; autoFocusTitle?: 
 
 type SidePanelProps = {
   mode: 'detail' | 'analyze' | 'summarize';
+  mapId: string;
   selectedNode: SelectedNode | null;
   connectedNodes: ConnectedNode[];
   allNodeLabels: string[];
@@ -17,11 +18,13 @@ type SidePanelProps = {
   onAiAssociate?: (nodeId: string) => void;
   onAddChild?: (nodeId: string) => void;
   onNodeLabelChange?: (nodeId: string, label: string) => void;
+  onMemoChange?: (nodeId: string, memo: string) => void;
   visible: boolean;
 };
 
 export function SidePanel({
   mode,
+  mapId,
   selectedNode,
   connectedNodes,
   allNodeLabels,
@@ -30,6 +33,7 @@ export function SidePanel({
   onAiAssociate,
   onAddChild,
   onNodeLabelChange,
+  onMemoChange,
   visible,
 }: SidePanelProps) {
   return (
@@ -43,6 +47,8 @@ export function SidePanel({
     >
       {mode === 'detail' && selectedNode && (
         <NodeDetailPanel
+          mapId={mapId}
+          nodeId={selectedNode.id}
           nodeLabel={selectedNode.label}
           nodeMemo={selectedNode.memo}
           connectedNodes={connectedNodes}
@@ -50,14 +56,15 @@ export function SidePanel({
           onAiAssociate={onAiAssociate ? () => onAiAssociate(selectedNode.id) : undefined}
           onAddChild={onAddChild ? () => onAddChild(selectedNode.id) : undefined}
           onLabelChange={onNodeLabelChange ? (label: string) => onNodeLabelChange(selectedNode.id, label) : undefined}
+          onMemoChange={onMemoChange ? (memo: string) => onMemoChange(selectedNode.id, memo) : undefined}
           autoFocusTitle={selectedNode.autoFocusTitle}
         />
       )}
       {mode === 'analyze' && (
-        <AiAnalyzePanel targetNodeLabels={allNodeLabels} onClose={onClose} />
+        <AiAnalyzePanel mapId={mapId} targetNodeLabels={allNodeLabels} onClose={onClose} />
       )}
       {mode === 'summarize' && (
-        <SummarizePanel markedLabels={markedLabels} onClose={onClose} />
+        <SummarizePanel mapId={mapId} markedLabels={markedLabels} onClose={onClose} />
       )}
     </div>
   );

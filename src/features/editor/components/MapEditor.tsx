@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -22,12 +22,19 @@ import '@xyflow/react/dist/style.css';
 import { CustomNode, NodeActionsContext, type CustomNodeType } from './CustomNode';
 import { MapToolbar } from './MapToolbar';
 import { SidePanel } from './SidePanel';
+import { toast } from 'sonner';
+import { createNode } from '@/features/nodes/actions/createNode';
+import { updateNode } from '@/features/nodes/actions/updateNode';
+import { bulkUpdateNodePositions } from '@/features/nodes/actions/bulkUpdateNodePositions';
+import { createEdge } from '@/features/edges/actions/createEdge';
+import { deleteEdge } from '@/features/edges/actions/deleteEdge';
+import { updateMap } from '@/features/maps/actions/updateMap';
 
 type SidePanelMode = 'detail' | 'analyze' | 'summarize' | null;
 
 type MockNode = { id: string; label: string; memo: string; positionX: number; positionY: number };
 type MockEdge = { id: string; source: string; target: string };
-type MapEditorProps = { initialNodes: MockNode[]; initialEdges: MockEdge[]; mapTitle: string };
+type MapEditorProps = { mapId: string; initialNodes: MockNode[]; initialEdges: MockEdge[]; mapTitle: string };
 
 const nodeTypes = { custom: CustomNode };
 const edgeStyle = { stroke: 'var(--color-border-strong)', strokeWidth: 1.5 };
@@ -61,11 +68,9 @@ function calcChildPositions(px: number, py: number, existing: number, count: num
   return out;
 }
 
-// --- Radial Tree Layout (each node fans out its children) ---
 function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] {
   if (nodes.length === 0) return nodes;
 
-  // Build adjacency
   const adj = new Map<string, string[]>();
   for (const n of nodes) adj.set(n.id, []);
   for (const e of edges) {
@@ -73,14 +78,12 @@ function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] 
     adj.get(e.target)?.push(e.source);
   }
 
-  // Find most-connected node as root (always placed at center)
   let rootId = nodes[0]!.id;
   let maxConn = 0;
   for (const [id, neighbors] of adj) {
     if (neighbors.length > maxConn) { maxConn = neighbors.length; rootId = id; }
   }
 
-  // BFS to build a tree structure (parent → children)
   const childrenMap = new Map<string, string[]>();
   const visited = new Set<string>();
   visited.add(rootId);
@@ -99,7 +102,6 @@ function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] 
     }
   }
 
-  // Subtree sizes for proportional angle allocation
   const subtreeSize = new Map<string, number>();
   function calcSize(id: string): number {
     let size = 1;
@@ -109,7 +111,6 @@ function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] 
   }
   calcSize(rootId);
 
-  // Place nodes: root at (0,0), children fan out from each parent
   const ringGap = 200;
   const posMap = new Map<string, { x: number; y: number }>();
   posMap.set(rootId, { x: 0, y: 0 });
@@ -130,7 +131,6 @@ function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] 
   }
   place(rootId, 0, 0, 2 * Math.PI);
 
-  // Disconnected nodes in an outer ring
   const disconnected = nodes.filter((n) => !visited.has(n.id));
   if (disconnected.length > 0) {
     let maxR = 0;
@@ -151,22 +151,7 @@ function radialLayout(nodes: CustomNodeType[], edges: Edge[]): CustomNodeType[] 
   });
 }
 
-const AI_KEYWORDS: Record<string, string[]> = {
-  'AI活用': ['機械学習', '深層学習', '生成AI', 'プロンプト設計'],
-  '自然言語処理': ['大規模言語モデル', 'RAG', '感情分析', 'テキストマイニング'],
-  '画像認識': ['物体検出', 'セグメンテーション', 'OCR', '顔認識'],
-  '自動化': ['RPA', 'CI/CD', 'ワークフロー', 'ノーコード'],
-  'チャットボット': ['FAQ自動応答', 'カスタマーサポート', '対話管理', 'インテント分析'],
-  '文書要約': ['抽出型要約', '生成型要約', 'キーフレーズ', '構造化'],
-  '品質検査': ['異常検知', '欠陥分類', 'インライン検査', '予知保全'],
-  'データ分析': ['可視化', '統計モデル', '予測分析', 'ダッシュボード'],
-};
-const DEFAULT_KW = ['関連トピック1', '関連トピック2', '関連トピック3', '新しい視点'];
-
-let nid = 100;
-let eid = 100;
-
-function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps) {
+function MapEditorInner({ mapId, initialNodes, initialEdges, mapTitle }: MapEditorProps) {
   const rfInit = useMemo(() => convertToRfNodes(initialNodes), [initialNodes]);
   const rfEdgeInit = useMemo(() => convertToRfEdges(initialEdges), [initialEdges]);
 
@@ -185,7 +170,28 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
   const [markedNodeIds, setMarkedNodeIds] = useState<Set<string>>(new Set());
   const [markedEdgeIds, setMarkedEdgeIds] = useState<Set<string>>(new Set());
 
+  // Debounced position save
+  const positionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
   const memoizedNodeTypes = useMemo(() => nodeTypes, []);
+
+  // --- Save helpers ---
+  const savePositions = useCallback(() => {
+    const pending = pendingPositionsRef.current;
+    if (pending.size === 0) return;
+    const batch = Array.from(pending.entries()).map(([id, pos]) => ({
+      id, positionX: pos.x, positionY: pos.y,
+    }));
+    pendingPositionsRef.current = new Map();
+    bulkUpdateNodePositions({ nodes: batch });
+  }, []);
+
+  const queuePositionSave = useCallback((nodeId: string, x: number, y: number) => {
+    pendingPositionsRef.current.set(nodeId, { x, y });
+    if (positionTimerRef.current) clearTimeout(positionTimerRef.current);
+    positionTimerRef.current = setTimeout(savePositions, 500);
+  }, [savePositions]);
 
   // --- Side panel ---
   const openPanel = useCallback((mode: SidePanelMode) => {
@@ -200,15 +206,25 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
 
   // --- Connections ---
   const onConnect = useCallback((c: Connection) => {
+    if (!c.source || !c.target) return;
     setEdges((eds) => addEdge({ ...c, type: 'straight', style: edgeStyle }, eds));
-  }, [setEdges]);
+    createEdge({ mapId, sourceNodeId: c.source, targetNodeId: c.target }).then((result) => {
+      if (result.success) {
+        // Update the edge ID from the temporary one to the real DB ID
+        setEdges((eds) => eds.map((e) =>
+          (e.source === c.source && e.target === c.target && e.id.startsWith('reactflow'))
+            ? { ...e, id: result.data.id }
+            : e,
+        ));
+      }
+    });
+  }, [mapId, setEdges]);
 
   const onNodeClick: NodeMouseHandler<Node> = useCallback((_e, node) => {
-    if (markMode) return; // handled by CustomNode onClick
+    if (markMode) return;
     setSelectedNode(node as CustomNodeType);
     setAutoFocusTitle(false);
     openPanel('detail');
-    // Center viewport on clicked node
     const zoom = getZoom();
     setCenter(node.position.x, node.position.y, { zoom, duration: 300 });
   }, [markMode, openPanel, getZoom, setCenter]);
@@ -231,7 +247,27 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
     [edges],
   );
 
-  // --- Staggered add ---
+  // Track node position changes for auto-save
+  const handleNodesChange: typeof onNodesChange = useCallback((changes) => {
+    onNodesChange(changes);
+    for (const change of changes) {
+      if (change.type === 'position' && change.position && !change.dragging) {
+        queuePositionSave(change.id, change.position.x, change.position.y);
+      }
+    }
+  }, [onNodesChange, queuePositionSave]);
+
+  // Handle edge deletion
+  const handleEdgesChange: typeof onEdgesChange = useCallback((changes) => {
+    for (const change of changes) {
+      if (change.type === 'remove') {
+        deleteEdge({ id: change.id });
+      }
+    }
+    onEdgesChange(changes);
+  }, [onEdgesChange]);
+
+  // --- Staggered add (for AI associate) ---
   const addStaggered = useCallback((pid: string, kws: string[], aiGenerated = false) => {
     const parent = nodes.find((n) => n.id === pid);
     if (!parent) return;
@@ -239,62 +275,115 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
     const positions = calcChildPositions(parent.position.x, parent.position.y, cc, kws.length);
     kws.forEach((kw, i) => {
       setTimeout(() => {
-        const id = `node-${++nid}`;
+        const pos = positions[i] ?? { x: 0, y: 0 };
+        // Optimistic: add to canvas immediately, then persist
+        const tempId = `temp-${Date.now()}-${i}`;
         setNodes((nds) => [...nds, {
-          id, type: 'custom' as const,
-          position: positions[i] ?? { x: 0, y: 0 },
+          id: tempId, type: 'custom' as const,
+          position: pos,
           data: { label: kw, memo: '', isNew: true, isAiGenerated: aiGenerated },
         }]);
-        setEdges((eds) => [...eds, {
-          id: `edge-${++eid}`, source: pid, target: id, type: 'straight', style: edgeStyle,
-        }]);
+
+        createNode({ mapId, label: kw, positionX: pos.x, positionY: pos.y }).then((result) => {
+          if (result.success) {
+            setNodes((nds) => nds.map((n) => n.id === tempId ? { ...n, id: result.data.id } : n));
+            createEdge({ mapId, sourceNodeId: pid, targetNodeId: result.data.id }).then((edgeResult) => {
+              if (edgeResult.success) {
+                setEdges((eds) => [...eds, {
+                  id: edgeResult.data.id, source: pid, target: result.data.id,
+                  type: 'straight', style: edgeStyle,
+                }]);
+              }
+            });
+          }
+        });
       }, i * 120);
     });
-  }, [nodes, getChildCount, setNodes, setEdges]);
+  }, [mapId, nodes, getChildCount, setNodes, setEdges]);
 
-  // Add child inline on canvas (no sidebar)
+  // Add child inline on canvas
   const handleAddChildInline = useCallback((pid: string) => {
     const parent = nodes.find((n) => n.id === pid);
     if (!parent) return;
     const cc = getChildCount(pid);
     const positions = calcChildPositions(parent.position.x, parent.position.y, cc, 1);
-    const id = `node-${++nid}`;
+    const pos = positions[0] ?? { x: 0, y: 0 };
+    const tempId = `temp-${Date.now()}`;
+
     setNodes((nds) => [...nds, {
-      id, type: 'custom' as const,
-      position: positions[0] ?? { x: 0, y: 0 },
+      id: tempId, type: 'custom' as const, position: pos,
       data: { label: '', memo: '', isNew: true, isEditing: true },
     }]);
-    setEdges((eds) => [...eds, {
-      id: `edge-${++eid}`, source: pid, target: id, type: 'straight', style: edgeStyle,
-    }]);
-  }, [nodes, getChildCount, setNodes, setEdges]);
 
-  // Add child and immediately open its detail panel (sidebar +)
+    createNode({ mapId, label: '新しいノード', positionX: pos.x, positionY: pos.y }).then((result) => {
+      if (result.success) {
+        setNodes((nds) => nds.map((n) => n.id === tempId ? { ...n, id: result.data.id } : n));
+        createEdge({ mapId, sourceNodeId: pid, targetNodeId: result.data.id }).then((edgeResult) => {
+          if (edgeResult.success) {
+            setEdges((eds) => [...eds, {
+              id: edgeResult.data.id, source: pid, target: result.data.id,
+              type: 'straight', style: edgeStyle,
+            }]);
+          }
+        });
+      }
+    });
+  }, [mapId, nodes, getChildCount, setNodes, setEdges]);
+
+  // Add child and open detail panel
   const handleAddChildAndSelect = useCallback((pid: string) => {
     const parent = nodes.find((n) => n.id === pid);
     if (!parent) return;
     const cc = getChildCount(pid);
     const positions = calcChildPositions(parent.position.x, parent.position.y, cc, 1);
-    const id = `node-${++nid}`;
+    const pos = positions[0] ?? { x: 0, y: 0 };
+    const tempId = `temp-${Date.now()}`;
+
     const newNode: CustomNodeType = {
-      id, type: 'custom' as const,
-      position: positions[0] ?? { x: 0, y: 0 },
+      id: tempId, type: 'custom' as const, position: pos,
       data: { label: '', memo: '', isNew: true },
     };
     setNodes((nds) => [...nds, newNode]);
-    setEdges((eds) => [...eds, {
-      id: `edge-${++eid}`, source: pid, target: id, type: 'straight', style: edgeStyle,
-    }]);
     setSelectedNode(newNode);
     setAutoFocusTitle(true);
     openPanel('detail');
-  }, [nodes, getChildCount, setNodes, setEdges, openPanel]);
 
+    createNode({ mapId, label: '新しいノード', positionX: pos.x, positionY: pos.y }).then((result) => {
+      if (result.success) {
+        setNodes((nds) => nds.map((n) => n.id === tempId ? { ...n, id: result.data.id } : n));
+        setSelectedNode((prev) => prev && prev.id === tempId ? { ...prev, id: result.data.id } : prev);
+        createEdge({ mapId, sourceNodeId: pid, targetNodeId: result.data.id }).then((edgeResult) => {
+          if (edgeResult.success) {
+            setEdges((eds) => [...eds, {
+              id: edgeResult.data.id, source: pid, target: result.data.id,
+              type: 'straight', style: edgeStyle,
+            }]);
+          }
+        });
+      }
+    });
+  }, [mapId, nodes, getChildCount, setNodes, setEdges, openPanel]);
+
+  // AI associate on a specific node
   const handleAiNode = useCallback((pid: string) => {
     const p = nodes.find((n) => n.id === pid) as CustomNodeType | undefined;
     if (!p) return;
-    addStaggered(pid, AI_KEYWORDS[p.data.label] ?? DEFAULT_KW, true);
-  }, [nodes, addStaggered]);
+    // Call the AI associate API
+    fetch('/api/ai/associate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapId, nodeId: pid, label: p.data.label }),
+    })
+      .then((res) => res.json())
+      .then((data: { keywords?: string[] }) => {
+        if (data.keywords && data.keywords.length > 0) {
+          addStaggered(pid, data.keywords, true);
+        }
+      })
+      .catch(() => {
+        toast.error('AI連想に失敗しました');
+      });
+  }, [mapId, nodes, addStaggered]);
 
   // Mark toggle from node
   const handleToggleMark = useCallback((nodeId: string) => {
@@ -313,7 +402,6 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
     })),
   [nodes, markedNodeIds]);
 
-  // Apply marks to edge styles
   const edgesWithMarks = useMemo(() =>
     edges.map((e) => ({
       ...e,
@@ -324,40 +412,24 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
 
   // --- Toolbar actions ---
   const handleGlobalAssociate = useCallback(() => {
-    const kws = ['ユースケース分析', 'ROI試算', '導入ロードマップ', '競合比較'];
-    const cx = nodes.reduce((s, n) => s + n.position.x, 0) / (nodes.length || 1);
-    const cy = nodes.reduce((s, n) => s + n.position.y, 0) / (nodes.length || 1);
-    kws.forEach((kw, i) => {
-      setTimeout(() => {
-        const angle = (i / kws.length) * 2 * Math.PI - Math.PI / 2;
-        const r = 350;
-        const px = cx + r * Math.cos(angle);
-        const py = cy + r * Math.sin(angle);
-        const id = `node-${++nid}`;
-        let closest = nodes[0]?.id ?? '';
-        let cd = Infinity;
-        for (const n of nodes) {
-          const d = (n.position.x - px) ** 2 + (n.position.y - py) ** 2;
-          if (d < cd) { cd = d; closest = n.id; }
-        }
-        setNodes((nds) => [...nds, { id, type: 'custom' as const, position: { x: px, y: py }, data: { label: kw, memo: '', isNew: true, isAiGenerated: true } }]);
-        if (closest) setEdges((eds) => [...eds, { id: `edge-${++eid}`, source: closest, target: id, type: 'straight', style: edgeStyle }]);
-      }, i * 150);
-    });
-  }, [nodes, setNodes, setEdges]);
+    // If a node is selected, AI associate on it; otherwise use the most connected node
+    const target = selectedNode ?? nodes[0];
+    if (target) {
+      handleAiNode(target.id);
+    }
+  }, [selectedNode, nodes, handleAiNode]);
 
   const handleAnalyze = useCallback(() => openPanel('analyze'), [openPanel]);
 
   const handleAutoLayout = useCallback(() => {
     const target = radialLayout(nodes as CustomNodeType[], edges);
-    // Animate: interpolate positions over 400ms
     const start = performance.now();
     const duration = 400;
     const origins = new Map(nodes.map((n) => [n.id, { ...n.position }]));
 
     function step(now: number) {
       const t = Math.min((now - start) / duration, 1);
-      const ease = 1 - (1 - t) ** 3; // ease-out cubic
+      const ease = 1 - (1 - t) ** 3;
       setNodes(
         target.map((n) => {
           const o = origins.get(n.id) ?? n.position;
@@ -371,7 +443,14 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
         }),
       );
       if (t < 1) requestAnimationFrame(step);
-      else setTimeout(() => fitView({ duration: 300 }), 20);
+      else {
+        setTimeout(() => fitView({ duration: 300 }), 20);
+        // Save final positions
+        const batch = target.map((n) => ({
+          id: n.id, positionX: n.position.x, positionY: n.position.y,
+        }));
+        bulkUpdateNodePositions({ nodes: batch });
+      }
     }
     requestAnimationFrame(step);
   }, [nodes, edges, setNodes, fitView]);
@@ -383,15 +462,45 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
   const handleSummarize = useCallback(() => openPanel('summarize'), [openPanel]);
 
   // Update node label from sidebar
+  const labelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNodeLabelChange = useCallback((nodeId: string, label: string) => {
     setNodes((nds) => nds.map((n) =>
       n.id === nodeId ? { ...n, data: { ...n.data, label } } : n,
     ));
+    // Debounced save
+    if (labelTimerRef.current) clearTimeout(labelTimerRef.current);
+    labelTimerRef.current = setTimeout(() => {
+      if (label.trim() && !nodeId.startsWith('temp-')) {
+        updateNode({ id: nodeId, label });
+      }
+    }, 500);
   }, [setNodes]);
+
+  // Update node memo from sidebar
+  const memoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleMemoChange = useCallback((nodeId: string, memo: string) => {
+    setNodes((nds) => nds.map((n) =>
+      n.id === nodeId ? { ...n, data: { ...n.data, memo } } : n,
+    ));
+    if (memoTimerRef.current) clearTimeout(memoTimerRef.current);
+    memoTimerRef.current = setTimeout(() => {
+      if (!nodeId.startsWith('temp-')) {
+        updateNode({ id: nodeId, memo });
+      }
+    }, 1000);
+  }, [setNodes]);
+
+  // Title edit
+  const titleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTitleChange = useCallback((title: string) => {
+    if (titleTimerRef.current) clearTimeout(titleTimerRef.current);
+    titleTimerRef.current = setTimeout(() => {
+      updateMap({ id: mapId, title: title || '無題のマップ' });
+    }, 500);
+  }, [mapId]);
 
   const markedCount = markedNodeIds.size + markedEdgeIds.size;
 
-  // Data for panels
   const connectedNodes = useMemo(() => {
     if (!selectedNode) return [];
     const ids = edges
@@ -403,7 +512,6 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
   const allLabels = useMemo(() => nodes.map((n) => (n as CustomNodeType).data.label), [nodes]);
   const sidePanelNode = selectedNode ? { id: selectedNode.id, label: selectedNode.data.label, memo: selectedNode.data.memo, autoFocusTitle } : null;
 
-  // Marked labels for summarize
   const markedLabels = useMemo(
     () => nodes.filter((n) => markedNodeIds.has(n.id)).map((n) => (n as CustomNodeType).data.label),
     [nodes, markedNodeIds],
@@ -425,6 +533,7 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
         onAutoLayout={handleAutoLayout}
         onToggleMarkMode={handleToggleMarkMode}
         onSummarize={handleSummarize}
+        onTitleChange={handleTitleChange}
       />
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 relative">
@@ -432,8 +541,8 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
             <ReactFlow
               nodes={nodesWithMarks}
               edges={edgesWithMarks}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={handleEdgesChange}
               onConnect={onConnect}
               onNodeClick={onNodeClick}
               onEdgeClick={onEdgeClick}
@@ -453,6 +562,7 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
           <SidePanel
             key={panelKey}
             mode={sidePanelMode}
+            mapId={mapId}
             selectedNode={sidePanelNode}
             connectedNodes={connectedNodes}
             allNodeLabels={allLabels}
@@ -461,6 +571,7 @@ function MapEditorInner({ initialNodes, initialEdges, mapTitle }: MapEditorProps
             onAiAssociate={handleAiNode}
             onAddChild={handleAddChildAndSelect}
             onNodeLabelChange={handleNodeLabelChange}
+            onMemoChange={handleMemoChange}
             visible={sidePanelVisible}
           />
         )}

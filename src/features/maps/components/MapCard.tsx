@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { MapCardMenu } from './MapCardMenu';
+import { formatRelativeTime } from '@/lib/utils/formatRelativeTime';
 
 type MapCardProps = {
   map: {
     id: string;
     title: string;
     description: string;
-    nodeCount: number;
-    updatedAt: string;
+    node_count: number;
+    updated_at: string;
   };
 };
 
@@ -48,17 +49,11 @@ export function MapCard({ map }: MapCardProps) {
         )}
 
         <div className="flex justify-between items-center mt-auto pt-4">
-          <span
-            className="text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {map.nodeCount} nodes
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {map.node_count} nodes
           </span>
-          <span
-            className="text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {map.updatedAt}
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {formatRelativeTime(map.updated_at)}
           </span>
         </div>
       </div>
