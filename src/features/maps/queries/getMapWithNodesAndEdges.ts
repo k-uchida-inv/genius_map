@@ -1,45 +1,58 @@
-import { createClient } from '@/lib/supabase/server';
+import { eq, and, isNull, asc } from 'drizzle-orm';
+import { auth } from '@/lib/auth';
+import { db } from '@/lib/db/client';
+import { maps, nodes, edges } from '@/lib/db/schema';
 
 export type NodeRow = {
   id: string;
-  map_id: string;
+  mapId: string;
   label: string;
-  memo: string;
-  position_x: number;
-  position_y: number;
-  created_at: string;
-  updated_at: string;
+  memo: string | null;
+  positionX: number;
+  positionY: number;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type EdgeRow = {
   id: string;
-  map_id: string;
-  source_node_id: string;
-  target_node_id: string;
-  created_at: string;
-  updated_at: string;
+  mapId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  createdAt: Date;
 };
 
 export type MapData = {
-  map: { id: string; title: string; description: string };
+  map: { id: string; title: string; description: string | null };
   nodes: NodeRow[];
   edges: EdgeRow[];
 };
 
 export async function getMapWithNodesAndEdges(mapId: string): Promise<MapData | null> {
-  const supabase = await createClient();
+  const session = await auth();
+  if (!session?.user?.id) return null;
 
-  const [mapResult, nodesResult, edgesResult] = await Promise.all([
-    supabase.from('maps').select('id, title, description').eq('id', mapId).single(),
-    supabase.from('nodes').select('*').eq('map_id', mapId).order('created_at'),
-    supabase.from('edges').select('*').eq('map_id', mapId).order('created_at'),
+  const map = await db.query.maps.findFirst({
+    where: and(
+      eq(maps.id, mapId),
+      eq(maps.userId, session.user.id),
+      isNull(maps.deletedAt),
+    ),
+    columns: { id: true, title: true, description: true },
+  });
+
+  if (!map) return null;
+
+  const [nodeRows, edgeRows] = await Promise.all([
+    db.query.nodes.findMany({
+      where: eq(nodes.mapId, mapId),
+      orderBy: asc(nodes.createdAt),
+    }),
+    db.query.edges.findMany({
+      where: eq(edges.mapId, mapId),
+      orderBy: asc(edges.createdAt),
+    }),
   ]);
 
-  if (mapResult.error || !mapResult.data) return null;
-
-  return {
-    map: mapResult.data,
-    nodes: nodesResult.data ?? [],
-    edges: edgesResult.data ?? [],
-  };
+  return { map, nodes: nodeRows, edges: edgeRows };
 }

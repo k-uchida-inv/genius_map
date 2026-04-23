@@ -1,29 +1,25 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { eq } from 'drizzle-orm';
+import { auth } from '@/lib/auth';
+import { db } from '@/lib/db/client';
+import { maps } from '@/lib/db/schema';
 import { ok, err, type Result } from '@/lib/types/result';
 import { revalidatePath } from 'next/cache';
 
 const DeleteMapSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
 });
 
 export async function deleteMap(input: unknown): Promise<Result<void>> {
   const parsed = DeleteMapSchema.safeParse(input);
   if (!parsed.success) return err(new Error('Invalid input'));
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return err(new Error('Unauthorized'));
+  const session = await auth();
+  if (!session?.user?.id) return err(new Error('Unauthorized'));
 
-  // Soft delete
-  const { error } = await supabase
-    .from('maps')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', parsed.data.id);
-
-  if (error) return err(new Error(error.message));
+  await db.update(maps).set({ deletedAt: new Date() }).where(eq(maps.id, parsed.data.id));
 
   revalidatePath('/dashboard');
   return ok(undefined);

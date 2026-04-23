@@ -4,9 +4,9 @@ import { MapCard } from './MapCard';
 type MapItem = {
   id: string;
   title: string;
-  description: string;
-  node_count: number;
-  updated_at: string;
+  description: string | null;
+  nodeCount: number;
+  updatedAt: Date;
 };
 
 type MapListProps = {

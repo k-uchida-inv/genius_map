@@ -1,6 +1,6 @@
-export function formatRelativeTime(dateStr: string): string {
+export function formatRelativeTime(date: Date | string): string {
   const now = Date.now();
-  const diff = now - new Date(dateStr).getTime();
+  const diff = now - (date instanceof Date ? date.getTime() : new Date(date).getTime());
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
