@@ -1,12 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
-let client: Anthropic | null = null;
+let client: GoogleGenAI | null = null;
 
-export function getAnthropicClient(): Anthropic {
+export function getAIClient(): GoogleGenAI {
   if (!client) {
-    client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY!,
-    });
+    client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
   }
   return client;
 }

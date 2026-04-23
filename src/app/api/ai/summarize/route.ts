@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getAnthropicClient } from '@/lib/ai/client';
+import { getAIClient } from '@/lib/ai/client';
 import { checkAndRecordUsage } from '@/lib/ai/checkUsage';
 
 const RequestSchema = z.object({
@@ -30,26 +30,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const client = getAnthropicClient();
+    const ai = getAIClient();
     const labelList = parsed.data.labels.map((l, i) => `${i + 1}. ${l}`).join('\n');
 
-    const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `以下のマインドマップのノードを要約し、アイデアの概要、核心的な洞察、実行可能なアイデア、次のステップをマークダウン形式で日本語で記述してください。\n\nマークされたノード:\n${labelList}`,
-        },
-      ],
+    const stream = await ai.models.generateContentStream({
+      model: 'gemini-2.0-flash',
+      contents: `以下のマインドマップのノードを要約し、アイデアの概要、核心的な洞察、実行可能なアイデア、次のステップをマークダウン形式で日本語で記述してください。\n\nマークされたノード:\n${labelList}`,
     });
 
     const encoder = new TextEncoder();
     const readableStream = new ReadableStream({
       async start(controller) {
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            controller.enqueue(encoder.encode(event.delta.text));
+        for await (const chunk of stream) {
+          const text = chunk.text;
+          if (text) {
+            controller.enqueue(encoder.encode(text));
           }
         }
         controller.close();
