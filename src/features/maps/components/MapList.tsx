@@ -5,8 +5,8 @@ type MapItem = {
   id: string;
   title: string;
   description: string;
-  nodeCount: number;
-  updatedAt: string;
+  node_count: number;
+  updated_at: string;
 };
 
 type MapListProps = {
@@ -24,26 +24,11 @@ export function MapList({ maps }: MapListProps) {
           className="text-lg font-medium mt-4"
           style={{ color: 'var(--color-text-primary)' }}
         >
-          No maps yet
+          マップがまだありません
         </p>
-        <button
-          className="mt-4 inline-flex items-center justify-center h-9 px-4 py-2 text-sm font-medium rounded-[var(--radius-md)] transition-colors duration-150"
-          style={{
-            backgroundColor: 'var(--color-brand)',
-            color: '#ffffff',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-              'var(--color-brand-hover)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-              'var(--color-brand)';
-          }}
-          onClick={() => console.log('create first map')}
-        >
-          Create your first map
-        </button>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
+          最初のマップを作成しましょう
+        </p>
       </div>
     );
   }

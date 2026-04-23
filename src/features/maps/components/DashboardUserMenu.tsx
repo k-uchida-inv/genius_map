@@ -8,18 +8,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LogOut } from 'lucide-react';
+import { logout } from '@/features/auth/actions/logout';
 
 export function DashboardUserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="outline-none cursor-pointer">
         <Avatar>
-          <AvatarFallback>K</AvatarFallback>
+          <AvatarFallback>U</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          onClick={() => console.log('logout')}
+          onClick={() => logout()}
           className="cursor-pointer"
         >
           <LogOut />

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Sparkles, Brain, LayoutGrid, Highlighter, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,9 @@ type MapToolbarProps = {
   onAutoLayout: () => void;
   onToggleMarkMode: () => void;
   onSummarize: () => void;
+  onTitleChange?: (title: string) => void;
+  aiRemaining?: number;
+  aiLimit?: number;
 };
 
 export function MapToolbar({
@@ -25,9 +29,27 @@ export function MapToolbar({
   onAutoLayout,
   onToggleMarkMode,
   onSummarize,
+  onTitleChange,
+  aiRemaining = 50,
+  aiLimit = 50,
 }: MapToolbarProps) {
-  const aiRemaining = 42;
-  const aiLimit = 50;
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingTitle && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingTitle]);
+
+  const commitTitle = () => {
+    setEditingTitle(false);
+    const final = titleValue.trim() || '無題のマップ';
+    setTitleValue(final);
+    onTitleChange?.(final);
+  };
 
   return (
     <div
@@ -44,29 +66,34 @@ export function MapToolbar({
         >
           <ArrowLeft className="h-4 w-4" style={{ color: 'var(--color-text-primary)' }} />
         </Link>
-        <span
-          className="text-lg font-normal ml-2"
-          style={{ color: 'var(--color-text-primary)' }}
-        >
-          {title}
-        </span>
+        {editingTitle ? (
+          <input
+            ref={inputRef}
+            value={titleValue}
+            onChange={(e) => setTitleValue(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitTitle(); if (e.key === 'Escape') { setTitleValue(title); setEditingTitle(false); } }}
+            className="text-lg font-normal ml-2 bg-transparent outline-none border-b"
+            style={{ color: 'var(--color-text-primary)', borderColor: 'var(--color-brand)' }}
+          />
+        ) : (
+          <button
+            onClick={() => setEditingTitle(true)}
+            className="text-lg font-normal ml-2 hover:opacity-70 transition-opacity"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
+            {titleValue}
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-1.5">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onAutoLayout}
-          title="Auto Layout"
-        >
+        <Button size="sm" variant="outline" onClick={onAutoLayout} title="Auto Layout">
           <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
           Layout
         </Button>
 
-        <div
-          className="w-px h-5 mx-1"
-          style={{ backgroundColor: 'var(--color-border)' }}
-        />
+        <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--color-border)' }} />
 
         <Button
           size="sm"
@@ -88,10 +115,7 @@ export function MapToolbar({
           AI Analyze
         </Button>
 
-        <div
-          className="w-px h-5 mx-1"
-          style={{ backgroundColor: 'var(--color-border)' }}
-        />
+        <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--color-border)' }} />
 
         <Button
           size="sm"
@@ -113,21 +137,13 @@ export function MapToolbar({
         </Button>
 
         {markedCount > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSummarize}
-            className="animate-fade-in"
-          >
+          <Button size="sm" variant="outline" onClick={onSummarize} className="animate-fade-in">
             <FileText className="h-3.5 w-3.5 mr-1.5" />
             Summarize
           </Button>
         )}
 
-        <div
-          className="w-px h-5 mx-1"
-          style={{ backgroundColor: 'var(--color-border)' }}
-        />
+        <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--color-border)' }} />
 
         <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
           {aiRemaining}/{aiLimit}

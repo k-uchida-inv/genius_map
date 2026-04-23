@@ -4,46 +4,11 @@ import { Button } from '@/components/ui/button';
 import { MapList } from '@/features/maps/components/MapList';
 import { CreateMapDialog } from '@/features/maps/components/CreateMapDialog';
 import { DashboardUserMenu } from '@/features/maps/components/DashboardUserMenu';
+import { getMaps } from '@/features/maps/queries/getMaps';
 
-const mockMaps = [
-  {
-    id: '1',
-    title: 'Product Strategy 2026',
-    description: '今期の事業戦略とロードマップの整理',
-    nodeCount: 24,
-    updatedAt: '3 hours ago',
-  },
-  {
-    id: '2',
-    title: 'React Architecture Research',
-    description: 'Server Components と RSC パターンの比較分析',
-    nodeCount: 18,
-    updatedAt: '1 day ago',
-  },
-  {
-    id: '3',
-    title: 'Marketing Initiatives',
-    description: 'Q2 のマーケティングキャンペーン企画',
-    nodeCount: 12,
-    updatedAt: '2 days ago',
-  },
-  {
-    id: '4',
-    title: 'Book Notes: Thinking Fast and Slow',
-    description: '',
-    nodeCount: 8,
-    updatedAt: '5 days ago',
-  },
-  {
-    id: '5',
-    title: 'AI Use Cases Collection',
-    description: '業務効率化のためのAI活用方法をブレインストーミング',
-    nodeCount: 31,
-    updatedAt: '1 week ago',
-  },
-];
+export default async function DashboardPage() {
+  const maps = await getMaps();
 
-export default function DashboardPage() {
   return (
     <div
       className="min-h-screen"
@@ -90,7 +55,7 @@ export default function DashboardPage() {
           </CreateMapDialog>
         </div>
 
-        <MapList maps={mockMaps} />
+        <MapList maps={maps} />
       </main>
     </div>
   );
