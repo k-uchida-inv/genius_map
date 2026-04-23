@@ -5,12 +5,11 @@ import { toast } from 'sonner';
 import { signup } from '../actions/signup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Mail } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export function SignupForm() {
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  const [sent, setSent] = useState(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,21 +25,8 @@ export function SignupForm() {
       const result = await signup({ email, password });
       if (!result.success) {
         toast.error(result.error.message);
-        return;
       }
-      setSent(true);
     });
-  }
-
-  if (sent) {
-    return (
-      <div className="text-center space-y-3 py-4">
-        <Mail className="h-10 w-10 mx-auto" style={{ color: 'var(--color-brand)' }} />
-        <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          確認メールを送信しました。メールのリンクをクリックしてください。
-        </p>
-      </div>
-    );
   }
 
   return (

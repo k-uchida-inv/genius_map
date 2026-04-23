@@ -4,7 +4,7 @@ import { getAnthropicClient } from '@/lib/ai/client';
 import { checkAndRecordUsage } from '@/lib/ai/checkUsage';
 
 const RequestSchema = z.object({
-  mapId: z.string().uuid(),
+  mapId: z.string(),
   nodeId: z.string(),
   label: z.string().min(1).max(200),
 });

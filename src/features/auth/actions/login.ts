@@ -1,9 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
+import { signIn } from '@/lib/auth';
 import { err, type Result } from '@/lib/types/result';
+import { AuthError } from 'next-auth';
 
 const LoginSchema = z.object({
   email: z.string().email('正しいメールアドレスを入力してください'),
@@ -13,19 +13,21 @@ const LoginSchema = z.object({
 export async function login(input: unknown): Promise<Result<void>> {
   const parsed = LoginSchema.safeParse(input);
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message ?? 'Invalid input';
-    return err(new Error(msg));
+    return err(new Error(parsed.error.issues[0]?.message ?? 'Invalid input'));
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
-    password: parsed.data.password,
-  });
-
-  if (error) {
-    return err(new Error('メールアドレスまたはパスワードが正しくありません'));
+  try {
+    await signIn('credentials', {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirectTo: '/dashboard',
+    });
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return err(new Error('メールアドレスまたはパスワードが正しくありません'));
+    }
+    throw e; // Re-throw redirect errors
   }
 
-  redirect('/dashboard');
+  return err(new Error('Unexpected'));
 }

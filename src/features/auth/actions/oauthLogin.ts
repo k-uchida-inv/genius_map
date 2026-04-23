@@ -1,24 +1,7 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { signIn } from '@/lib/auth';
 
 export async function oauthLogin() {
-  const supabase = await createClient();
-  const headersList = await headers();
-  const origin = headersList.get('origin') ?? 'http://localhost:3000';
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${origin}/auth/callback`,
-    },
-  });
-
-  if (error || !data.url) {
-    redirect('/login?error=oauth');
-  }
-
-  redirect(data.url);
+  await signIn('google', { redirectTo: '/dashboard' });
 }

@@ -13,15 +13,15 @@ export default async function MapEditorPage({ params }: { params: Params }) {
   const initialNodes = data.nodes.map((n) => ({
     id: n.id,
     label: n.label,
-    memo: n.memo,
-    positionX: n.position_x,
-    positionY: n.position_y,
+    memo: n.memo ?? '',
+    positionX: n.positionX,
+    positionY: n.positionY,
   }));
 
   const initialEdges = data.edges.map((e) => ({
     id: e.id,
-    source: e.source_node_id,
-    target: e.target_node_id,
+    source: e.sourceNodeId,
+    target: e.targetNodeId,
   }));
 
   return (

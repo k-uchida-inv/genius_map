@@ -6,9 +6,9 @@ type MapCardProps = {
   map: {
     id: string;
     title: string;
-    description: string;
-    node_count: number;
-    updated_at: string;
+    description: string | null;
+    nodeCount: number;
+    updatedAt: Date;
   };
 };
 
@@ -50,10 +50,10 @@ export function MapCard({ map }: MapCardProps) {
 
         <div className="flex justify-between items-center mt-auto pt-4">
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {map.node_count} nodes
+            {map.nodeCount} nodes
           </span>
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {formatRelativeTime(map.updated_at)}
+            {formatRelativeTime(map.updatedAt)}
           </span>
         </div>
       </div>

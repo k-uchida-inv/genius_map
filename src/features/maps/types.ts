@@ -1,13 +1,13 @@
 export type MapRow = {
   id: string;
-  user_id: string;
+  userId: string;
   title: string;
-  description: string;
-  deleted_at: string | null;
-  created_at: string;
-  updated_at: string;
+  description: string | null;
+  deletedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type MapWithNodeCount = MapRow & {
-  node_count: number;
+  nodeCount: number;
 };
